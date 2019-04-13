@@ -1,0 +1,13 @@
+### Dirs
+.venv/
+.vscode/
+data/
+models/
+
+### Files
+notes.py
+
+### Types
+*.csv
+*.md
+*.log

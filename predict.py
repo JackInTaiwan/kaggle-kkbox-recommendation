@@ -3,44 +3,50 @@ import time
 import numpy as np
 import pandas as pd
 import torch as tor
-from train import NNModel
 
 
 
-def prediction_nn(model_fp):
+def prediction_simple_nn(model_fp):
+    ### Load data
     data_test_fp_list = ['./data/prepro_merged_test_data_{}.npy'.format(i) for i in range(5)]
 
     model = NNModel()
     model.load_state_dict(tor.load(model_fp))
     model.eval()
 
-    pred_array = np.array([])
 
+    ### Prediction
+    print('|Start prediction......'
+    )
+    pred_array = np.array([])
     for test_data_fp in data_test_fp_list:
         data = tor.FloatTensor(np.load(test_data_fp).astype(np.float64))
         print('|Working on: {}'.format(test_data_fp))
         print('|Show test data samples')
-        print(data[:5]) 
 
         pred = model(data)
         pred = pred.detach().numpy().reshape(-1)
-        print(pred)
         pred_array = np.hstack((pred_array, pred))
     
     pred_array = pred_array.reshape(-1, 1)
+    pd.DataFrame(pred_array).to_csv('./prediction_{}_{}.csv'.format(mode, int(time.time())), index_label='id', header=['target'])
+
     print('|Prediction size: {}'.format(pred_array.shape[0]))
 
-    pd.DataFrame(pred_array).to_csv('./prediction_{}_{}.csv'.format(mode, int(time.time())), index_label='id', header=['target'])
 
 
 def prediction_stat(model_fp):
+    from train import NNModel
+
+    ### Load data
     data_train = np.array(pd.read_csv('./data/train.csv'))
     data_test_all_fp = './data/test.csv'
     data_test_fp_list = ['./data/prepro_merged_test_data_{}.npy'.format(i) for i in range(5)]
     data_test_all = np.array(pd.read_csv(data_test_all_fp, index_col=0))
     output_array = np.empty((len(data_test_all)))
 
-    # Build user dict
+
+    ### Build user dict
     user_dict = dict()
 
     for item in data_train:
@@ -53,7 +59,8 @@ def prediction_stat(model_fp):
     for item in user_dict:
         user_dict[item] = np.mean(np.array(user_dict[item]))
 
-    # Predict the user based on his record
+
+    ### Predict the user based on his record
     user_not_duplicate_index_list = []
     count = 0
 
@@ -66,9 +73,8 @@ def prediction_stat(model_fp):
             user_not_duplicate_index_list.append(i)
 
     print('|Samples with user who has records: {} samples'.format(count))
-    # Predict the user based on nn pre-trained model if he has no record
-    user_not_duplicate_list = []
 
+    user_not_duplicate_list = []
     data_test = [np.load(fp) for fp in data_test_fp_list]
 
     for index in user_not_duplicate_index_list:
@@ -79,6 +85,9 @@ def prediction_stat(model_fp):
     user_not_duplicate_list = np.array(user_not_duplicate_list)
     print('|Samples with user who has no records: {}'.format(len(user_not_duplicate_list)))
 
+
+    ### Prediction
+    print('|Start prediction......')
     model = NNModel()
     model.load_state_dict(tor.load(model_fp))
     model.eval()
@@ -88,25 +97,52 @@ def prediction_stat(model_fp):
 
     for index, pred in zip(user_not_duplicate_index_list, pred_array):
         output_array[index] = pred
+    pd.DataFrame(output_array).to_csv('./prediction_{}_{}.csv'.format(mode, int(time.time())), index_label='id', header=['target'])
 
     print('|Prediction size: {}'.format(output_array.shape[0]))
 
-    pd.DataFrame(output_array).to_csv('./prediction_{}_{}.csv'.format(mode, int(time.time())), index_label='id', header=['target'])
 
 
-    # for test_data_fp in data_test_fp_list:
-    #     data = tor.FloatTensor(np.load(test_data_fp).astype(np.float64))
-    #     print('|Working on: {}'.format(test_data_fp))
-    #     print('|Show test data samples')
-    #     print(data[:5]) 
+def prediction_memory(model_fp):
+    from train import Memory_Based_Trainer
+    from torch.utils.data import TensorDataset, DataLoader
 
-    #     for sample in test_data_fp:
-    #         if sample[]
-    #     pred = model(data)
-    #     pred = pred.detach().numpy().reshape(-1)
-    #     print(pred)
-    #     pred_array = np.hstack((pred_array, pred))
 
+    ### Load data and model
+    data_test_fp = './data/prepro_memory_merged_test_data.npy'
+    data_test = np.load(data_test_fp)
+    data_test = data_test[:, :-1]   # remove the indicator of existence of base
+
+    data_set = TensorDataset(tor.FloatTensor(data_test))
+    data_loader = DataLoader(
+        dataset=data_set,
+        batch_size=1000,
+        shuffle=False,
+        drop_last=False,
+    )
+
+    model = Memory_Based_Trainer.create_model(model_name='ratio_base_modified')
+    model.load_state_dict(tor.load(model_fp))
+    model.cpu()
+    model.eval()
+
+
+    ### Prediction
+    print('|Start prediction ...')
+
+    output_array = np.array([])
+    for i, batch in enumerate(data_loader):
+        batch_test = batch[0]
+        pred_array = model(batch_test).detach().numpy()
+        if output_array.shape[0] == 0:
+            output_array = pred_array
+        else:
+            output_array = np.vstack((output_array, pred_array))
+
+    output_array = np.array(output_array)
+    pd.DataFrame(output_array).to_csv('./predictions/prediction_{}_{}.csv'.format(mode, int(time.time())), index_label='id', header=['target'])
+
+    print('|Prediction size: {}'.format(output_array.shape[0]))
 
 
 
@@ -114,6 +150,8 @@ if __name__ == '__main__':
     mode, model_fp = sys.argv[1], sys.argv[2]
 
     if mode == 'nn':
-        prediction_nn(model_fp)
+        prediction_simple_nn(model_fp)
     elif mode == 'stat':
         prediction_stat(model_fp)
+    elif mode == 'memory':
+        prediction_memory(model_fp)

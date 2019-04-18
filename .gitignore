@@ -3,6 +3,8 @@
 .vscode/
 data/
 models/
+__pycache__/
+predictions/
 
 ### Files
 notes.py

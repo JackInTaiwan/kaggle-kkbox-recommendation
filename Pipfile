@@ -12,6 +12,8 @@ pandas = "*"
 matplotlib = "*"
 sklearn = "*"
 torch = "*"
+xgboost = "*"
+graphviz = "*"
 
 [requires]
 python_version = "3.7"
